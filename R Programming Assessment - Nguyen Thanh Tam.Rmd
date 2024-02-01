@@ -1,0 +1,290 @@
+---
+Name: "R Programming Assessment - Nguyen Thanh Tam"
+output: 
+  html_document: default
+---
+
+## Bike Rental Prediction
+
+```{r load-libraries, echo=TRUE}
+library("tidyverse") #need to call the library before you use the package
+library("rpivotTable")
+library("knitr")
+library("psych")
+library("RColorBrewer") # Can be installed if using the color palettes from the package
+library("ggplot2")
+library("scales")
+library("randomForest")
+library("caret")
+library("stats")
+```
+
+## Dataset Description
+
+- Dataset required: `Bike Rental.xlsx`
+
+`Sales Transactions.xlsx` contains the entire process from membership to rental and return has been automated in bike-sharing systems. Each of the column is defined as follows:
+
+- `instant` :  Record index
+- `dteday`: Date
+- `season`: Season (1: spring, 2: summer, 3: fall, 4: winter)
+- `yr`: Year (0: 2011, 1: 2012)
+- `mnth`: Month (1 to 12)
+- `holiday`: Weather day is a holiday or not
+- `weekday`: Day of the week
+- `Time Of Day`: Working day (1: neither weekend nor holiday, 0: other days)
+- `weathersit`: Weather situation (1: Clear, few clouds, partly cloudy, partly cloudy; 2: Mist + cloudy, mist + broken clouds, mist + few clouds, mist; 3: Light snow, light rain + thunderstorm + scattered clouds, light rain + scattered clouds; 4: Heavy rain + ice pallets)
+- `temp`: Normalized temperature in Celsius; The values are divided into 41 (max)
+- `atemp`: Normalized feeling temperature in Celsius; The values are divided into 50 (max)
+- `hum`: Normalized humidity; The values are divided into 100 (max)
+- `windspeed`: Normalized wind speed; The values are divided into 67 (max)
+- `casual`: Count of casual users
+- `registered`: Count of registered users
+- `cnt`: Count of total rental bikes including both casual and registered
+
+
+```{r q1-read-dataset, echo=TRUE}
+#import excel file into RStudio
+library("readxl")
+setwd("C:/Users/Admin/Downloads")
+#import xlsx file into RStudio
+df <- read_excel("Bike Rental.xlsx")
+```
+
+## Exploratory data analysis
+- Display the structure of the dataset
+```{r q1.(a), echo=TRUE}
+str(df)
+```
+
+- Data type conversion 
+
+```{r q1.(b), echo=TRUE}
+df$dteday <- as.Date(df$dteday)
+# Display the summary statistics
+summary(df)
+# Check for missing values 
+missing_values <- colSums(is.na(df))
+
+# Display the columns with missing values (if existed)
+print("Columns with Missing Values:")
+print(missing_values[missing_values > 0])  #There is no missing value
+
+```
+## Data vizualization
+
+```{r q1.(c), echo=TRUE}
+# Convert 'dteday' to Date type if it's not already
+df$dteday <- as.Date(df$dteday, format="%m/%d/%Y")
+
+# Extract month and year from 'dteday'
+df$month <- as.numeric(format(df$dteday, "%m"))
+df$year <- ifelse(df$yr == 0, 2011, 2012) # Convert 'yr' to the actual year
+
+# Aggregate data by month and year
+monthly_totals <- aggregate(cnt ~ month, df, sum)
+yearly_totals <- aggregate(cnt ~ year, df, sum)
+
+# Sort the data by month and year to ensure proper ordering in plots
+monthly_totals <- monthly_totals[order(monthly_totals$month), ]
+yearly_totals <- yearly_totals[order(yearly_totals$year), ]
+
+# Set up the plot with adjusted margins
+par(mar=c(5, 6, 4, 2) + 0.1)  # Increase the left margin
+
+# Monthly distribution of the total number of bikes rented
+barplot(monthly_totals$cnt, names.arg=month.abb[monthly_totals$month],
+        main="Monthly Distribution of Total Bikes Rented",
+        xlab="Month", ylab="", col="skyblue", las=1)
+
+# Add the y-axis label manually to avoid overlap
+mtext("Total Bikes Rented", side=2, line=5)
+
+# Reset to default margins after plotting
+par(mar=c(5, 4, 4, 2) + 0.1)
+
+
+# Set up the plot with adjusted margins
+par(mar=c(5, 6, 4, 2) + 0.1)  # Increase the left margin to prevent y-label overlap
+
+# Yearly distribution of the total number of bikes rented
+barplot(yearly_totals$cnt, names.arg=yearly_totals$year,
+        main="Yearly Distribution of Total Bikes Rented",
+        xlab="Year", ylab="", col="lightgreen", las=1)
+# Add the y-axis label manually to avoid overlap
+mtext("Total Bikes Rented", side=2, line=5)
+
+# Reset to default margins after plotting
+par(mar=c(5, 4, 4, 2) + 0.1)
+
+# Boxplot for outlier analysis, split by 'month'
+boxplot(df$cnt ~ factor(df$month),
+        main="Boxplot for Outliers Analysis (Monthly)",
+        xlab="Month", ylab="Total Bikes Rented", col="lightblue",
+        las=2) # las=2 makes the axis labels perpendicular to the axis
+
+
+# Create a boxplot for the 'cnt' variable, split by 'year'
+boxplot(cnt ~ year, data = df, 
+        main = "Boxplot of Bike Rentals by Year", 
+        xlab = "Year", 
+        ylab = "Total Bikes Rented",
+        col = c("lightblue", "lightgreen"),
+        outline = TRUE) # 'outline = TRUE' will plot the outliers as individual points
+```
+
+### Monthly Distribution of Total Bikes Rented
+- The graph shows a pattern that suggests seasonality in bike rentals. There is an increase in the number of bikes rented starting from spring months (March, April) peaking in the summer months (June, July, August, September), and then a decline as it moves into the fall and winter months (October, November, December). This pattern typically correlates with weather conditions, where warmer months are more favorable for biking activities.
+
+- Peak Rental Period: The highest number of bike rentals occurs during the summer months, with the peak appearing to be in June or July. This could be due to several factors such as favorable weather, increased tourism, or more daylight hours.
+
+- Lowest Rental Period: The lowest rentals are in the winter months, with January having the fewest rentals. Cold weather, snow, and shorter days could be contributing factors to this trend.
+
+- Trend Over the Year: There's a clear upward trend in rentals from January to the summer months, and then a downward trend as the year progresses towards winter.
+
+### Yearly Distribution of Total Bikes Rented
+- There is a significant increase in the total number of bikes rented from 2011 to 2012. This could indicate a growing popularity or expansion of the bike rental service.
+
+### Boxplot for monthly outliers 
+- Every month appears to have at least one outlier, with all of them being on the upper side, which could indicate days with unusually high bike rentals. July uniquely shows outliers on both the lower and upper sides, suggesting both unusually low and high rental numbers in that month.
+
+### Boxplot of Bike Rentals by Year
+- 2011: The boxplot for 2011 shows the median bike rentals is below 4000. The spread of the data, as shown by the interquartile range (the box), is narrower compared to 2012, indicating less variability in daily rental counts. The "whiskers" extend to include most of the data, and there don't appear to be any outliers.
+
+- 2012: For 2012, the median is higher, above 4000, indicating an overall increase in the median number of bike rentals. The interquartile range is wider, suggesting greater variability in bike rentals in 2012 compared to 2011. There is at least one outlier indicated by the dot below the lower "whisker", which represents days with unusually low bike rentals for that year.
+
+- 2012, There is one visible outlier below the lower whisker of the boxplot for that year. This indicates at least one day (or more, if data points overlap) where the total bike rentals were significantly lower than usual.
+
+- There are no outliers for 2011 within the range defined by the whiskers, suggesting that all the bike rental counts for that year fell within what's considered a typical range, without any unusually high or low days.
+
+##Descriptive Statistics
+
+```{r q1.(g), echo=TRUE}
+# Calculate summary statistics for the bike rental counts
+summary_stats <- summary(df$cnt)
+mean_cnt <- mean(df$cnt)
+median_cnt <- median(df$cnt)
+sd_cnt <- sd(df$cnt)
+
+# Print summary statistics
+print(summary_stats)
+print(paste("Mean:", mean_cnt))
+print(paste("Median:", median_cnt))
+print(paste("Standard Deviation:", sd_cnt))
+
+# Calculate summary statistics for weather conditions
+summary_temp <- summary(df$temp)
+summary_hum <- summary(df$hum)
+summary_windspeed <- summary(df$windspeed)
+
+# Print weather conditions summary statistics
+print(summary_temp)
+print(summary_hum)
+print(summary_windspeed)
+
+```
+## Time Series Analysis
+```{r q1.(f), echo=TRUE}
+# Visualizing the Time Series
+df$dteday <- as.Date(df$dteday)
+plot(df$dteday, df$cnt, type = 'l', xlab = 'Date', ylab = 'Total Bike Rentals', main = 'Time Series of Bike Rentals')
+
+# Decomposition
+ts_data <- ts(df$cnt, frequency = 365) # Adjust frequency based on your data (365 for daily data with yearly seasonality)
+decomposed <- stl(ts_data, s.window = "periodic")
+plot(decomposed)
+
+#Trend Analysis
+trend <- decomposed$time.series[,2]
+plot(trend, type = 'l', xlab = 'Time', ylab = 'Trend Component', main = 'Trend in Bike Rentals Over Time')
+
+#Seasonality Analysis
+seasonal <- decomposed$time.series[,1]
+plot(seasonal, type = 'l', xlab = 'Time', ylab = 'Seasonal Component', main = 'Seasonal Variations in Bike Rentals')
+
+```
+
+
+- Seasonality: The plot shows a clear seasonal pattern in bike rentals, with peaks and troughs occurring regularly throughout the time series. This suggests that bike rentals are likely influenced by seasonal factors, which could include weather changes, tourism seasons, or public holidays.
+
+- Trend: There seems to be an overall increasing trend in bike rentals over time, particularly noticeable when comparing the peaks from early 2011 to those in 2012.
+- 
+Cyclic Behavior: Although the main pattern is seasonal, there may also be shorter-term cycles within each year, possibly related to factors like school holidays, local events, or other recurring activities not directly related to the weather.
+
+- Variance: The variance in bike rentals appears to be relatively constant over time, suggesting that the size of the peaks and troughs does not change much from year to year. This constant variance is a good property for certain time series models, which assume homoscedasticity (constant variance).
+
+- Outliers: There do not appear to be any obvious outliers that would significantly distort the analysis or the fitting of time series models.
+
+
+## Machine Learning
+
+### Random Forest
+
+```{r q1.(d), echo=TRUE}
+
+# Set seed for reproducibility
+set.seed(42)
+
+# Split the data into training and test sets
+# Typically, 70% to 80% of the data is used for training and the rest for testing
+train_index <- sample(seq_len(nrow(df)), size = floor(0.8 * nrow(df)))
+train_set <- df[train_index, ]
+test_set <- df[-train_index, ]
+
+# Train the Random Forest model
+rf_model <- randomForest(cnt ~ ., data = train_set, ntree = 100) # You can adjust the number of trees
+# Make predictions on the test set
+predictions <- predict(rf_model, newdata = test_set)
+
+# Evaluate the model performance
+# Use RMSE (Root Mean Squared Error) and R^2
+rmse_test <- sqrt(mean((test_set$cnt - predictions)^2))
+r_squared_test <- cor(test_set$cnt, predictions)^2
+
+
+print(paste("RMSE on test set:", rmse_test))
+print(paste("R-squared on test set:", r_squared_test))
+```
+
+- The model achieved a Root Mean Squared Error (RMSE) of approximately 278.95. This indicates that, on average, the model's predictions are within roughly 279 units of the actual bike rental counts. 
+
+- The R-squared value is approximately 0.98198 (or 98.198%), which suggests that the model explains 98.198% of the variance in the bike rental counts
+
+### Linear Regression
+```{r q1.(e), echo=TRUE}
+# Assuming df is your dataframe, 'cnt' is the target variable, and weather-related variables are present
+
+# Prepare the data
+set.seed(123)  # for reproducibility
+index <- createDataPartition(df$cnt, p = 0.8, list = FALSE)
+train_data <- df[index, ]
+test_data <- df[-index, ]
+
+# Define the formula for the model, including only weather-related predictors
+# Here's an example where 'temp', 'hum', 'windspeed', and 'weathersit' are the predictors
+model_formula <- cnt ~ temp + hum + windspeed + weathersit
+
+# Train the model using Linear Regression
+lm_model <- lm(model_formula, data = train_data)
+
+# Summarize the model
+summary(lm_model)
+
+# Make predictions on the test set
+predictions <- predict(lm_model, newdata = test_data)
+
+# Evaluate the model performance
+# Calculate RMSE
+rmse <- sqrt(mean((test_data$cnt - predictions)^2))
+
+# Calculate R-squared
+r_squared <- summary(lm_model)$r.squared
+
+# Print the performance metrics
+print(paste("RMSE:", rmse))
+print(paste("R-squared:", r_squared))
+```
+
+- The R-squared value of 0.4479 suggests that approximately 44.79% of the variability in bike rentals is explained by the model
+- temp: The coefficient for temp is 6367.6, indicating that for each unit increase in the normalized temperature, the count of bike rentals increases by approximately 6367.6, holding all other variables constant. This significant positive relationship suggests that warmer temperatures are associated with higher bike rentals.
+- The equation predicting the total number of bike rentals (cnt) based on weather conditions can be written as: cnt = 3487.1 + 6367.6 × (temp)− 1400.3 × (hum) − 3288.9 × (windspeed) − 449.6  ×(weathersit)
